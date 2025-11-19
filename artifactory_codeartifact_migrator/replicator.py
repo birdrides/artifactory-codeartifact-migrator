@@ -619,6 +619,15 @@ def replicate_package(args, client, token_codeartifact, package_dict, db_file):
     for package in packages_to_replicate:
         publish_error = ""
         publish_fail = False
+        
+        # For npm packages, strip everything after '+' to make compatible with CodeArtifact
+        if package["type"] == "npm" and "+" in package["version"]:
+            original_version = package["version"]
+            package["version"] = package["version"].split("+")[0]
+            logger.info(
+                f"npm version sanitized for CodeArtifact: {original_version} -> {package['version']}"
+            )
+        
         if re.search(regex, package["package"]) or re.search(regex, package["version"]):
             logger.warning(
                 f"Bad characters found in package name or version, skipping: {package['repository']} {package['package']} {package['version']}"
@@ -671,10 +680,11 @@ def replicate_package(args, client, token_codeartifact, package_dict, db_file):
                         publish_fail = True
                         if publish_error != "":
                             publish_error = publish_error + " -- "
-                        publish_error = (
-                            publish_error
-                            + f"{response.status_code}, {response.reason}, {response.text}"
-                        )
+                        error_detail = f"{response.status_code}, {response.reason}, {response.text}"
+                        # Provide more helpful error message for metadata issues
+                        if "Metadata is missing required fields" in response.text or response.reason == "missing_from_metadata":
+                            error_detail += " (Package has invalid or missing metadata - Name/Version fields required by CodeArtifact)"
+                        publish_error = publish_error + error_detail
             # Required after pushing maven jar/pom's
             if package["type"] in ["maven", "gradle"] and publish_fail == False:
                 # This sets maven versions to published status
