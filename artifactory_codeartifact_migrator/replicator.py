@@ -73,7 +73,9 @@ def get_artifactory_version_metadata(package_dict, version):
         logger.debug(
             f"Fetching Artifactory metadata for {repo}/{pkg}/{version} via {path}"
         )
-        meta = artifactory.artifactory_http_call(args, path)
+        # Use raise_on_error=True so 404s (version path doesn't exist as a folder)
+        # are caught by the except block below instead of calling sys.exit(1).
+        meta = artifactory.artifactory_http_call(args, path, raise_on_error=True)
         return meta if isinstance(meta, dict) else {}
     except Exception as e:
         logger.warning(f"Failed to fetch metadata for {repo}/{pkg}/{version}: {e}")
@@ -1190,8 +1192,17 @@ def replicate_repository(
                         if len(uri_list) > 3:
                             package_path = uri_list[:-2]
                             package_name = "/".join(package_path)
+                            # Skip Gradle plugin marker artifacts.
+                            # These end with '.gradle.plugin' and are thin POMs that
+                            # just redirect to the real plugin artifact. Publishing
+                            # them to CodeArtifact is redundant and causes duplicates.
                             if package_name and package_name not in package_list:
-                                package_list.append(package_name)
+                                if not package_name.split("/")[-1].endswith(".gradle.plugin"):
+                                    package_list.append(package_name)
+                                else:
+                                    logger.info(
+                                        f"Skipping Gradle plugin marker artifact: {package_name}"
+                                    )
 
         package_list = sorted(set(package_list))
 

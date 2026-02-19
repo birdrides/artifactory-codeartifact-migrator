@@ -48,12 +48,13 @@ retry_strategy = Retry(
 )
 
 # Make an API Call to Artifactory and return json
-def artifactory_http_call(args, api_path):
+def artifactory_http_call(args, api_path, raise_on_error=False):
   """
   artifactory_http_call makes an API Call to Artifactory.
 
   :param args: arguments passed to cli command
   :param api_path: api path to add to url call
+  :param raise_on_error: if True, raise an exception on non-200 instead of sys.exit(1)
   :return: json data of the http response text
   """
   artifactory_auth = (args.artifactoryuser, args.artifactorypass)
@@ -76,6 +77,8 @@ def artifactory_http_call(args, api_path):
   if response.status_code == 200:
     return json.loads(response.text)
   else:
+    if raise_on_error:
+      raise Exception(f"Artifactory HTTP {response.status_code} for {uri}: {str(response)}")
     logger.critical(f"Failure connecting to {uri} : {str(response)}")
     sys.exit(1)
 
