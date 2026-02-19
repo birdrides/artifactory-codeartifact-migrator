@@ -73,7 +73,7 @@ def codeartifact_check_package_version(args, client, package_dict):
     ## Note: This replacement was required at a point, need to inspect conversions
     # package = package_dict['package'].replace('_', '-').lower()
     logger.debug(f"Package stripped: {package}")
-  if package_dict['type'] == 'maven':
+  if package_dict['type'] == 'maven' or package_dict['type'] == 'gradle':
     package_dict['namespace'] = package_dict['namespace'].replace('/', '.')
     package = package_dict['package']
   if package_dict['type'] == 'pypi':
@@ -317,9 +317,78 @@ def codeartifact_upload_pypi(token_codeartifact, package_dict, binary):
   :param binary: local binary to upload
   :return: http response object
   """
-  file = package_file.PackageFile.from_filename(binary, comment=None)
+  try:
+    file = package_file.PackageFile.from_filename(binary, comment=None)
+    data = file.metadata_dictionary()
+  except Exception as e:
+    # If twine can't load the package due to missing metadata, create minimal metadata
+    logger.warning(f"Failed to load package file {binary} with twine: {e}")
+    logger.info(f"Attempting to create minimal metadata structure for upload")
 
-  data = file.metadata_dictionary()
+    # Create a minimal metadata dictionary with required fields
+    data = {
+      'metadata_version': '2.1',
+      'name': package_dict.get('package', 'unknown').lower().replace('_', '-'),
+      'version': package_dict.get('version', '0.0.0'),
+      'summary': 'Migrated from Artifactory (metadata reconstructed)',
+      'author': 'bird',
+      'author_email': 'bird@bird.co'
+    }
+
+    logger.info(f"Created minimal metadata: name={data['name']}, version={data['version']}")
+
+    # We still need the file object for filename/basefilename
+    # Try to create a minimal file-like object
+    import os
+    class MinimalPackageFile:
+      def __init__(self, filepath):
+        self.filename = filepath
+        self.basefilename = os.path.basename(filepath)
+
+    file = MinimalPackageFile(binary)
+
+  # Validate and repair required metadata fields for CodeArtifact
+  missing_fields = []
+  if not data.get('name'):
+    missing_fields.append('name')
+  if not data.get('version'):
+    missing_fields.append('version')
+
+  if missing_fields:
+    logger.warning(
+      f"Package {binary} is missing required metadata fields: {', '.join(missing_fields)}. "
+      f"Attempting to inject metadata from package_dict. "
+      f"Package: {package_dict.get('package')}, Version: {package_dict.get('version')}"
+    )
+
+    # Inject missing metadata from package_dict
+    if not data.get('name') and package_dict.get('package'):
+      # PyPI normalizes package names: lowercase and hyphens instead of underscores
+      injected_name = package_dict.get('package').lower().replace('_', '-')
+      data['name'] = injected_name
+      logger.info(f"Injected missing 'name' metadata: {injected_name}")
+
+    if not data.get('version') and package_dict.get('version'):
+      injected_version = package_dict.get('version')
+      data['version'] = injected_version
+      logger.info(f"Injected missing 'version' metadata: {injected_version}")
+
+    # If we still don't have the required fields after injection, skip
+    if not data.get('name') or not data.get('version'):
+      logger.error(
+        f"Failed to inject required metadata. Name: {data.get('name')}, Version: {data.get('version')}. "
+        f"Skipping upload."
+      )
+      return mocked_requests_get()
+
+    # Ensure metadata_version is set (required by CodeArtifact)
+    if not data.get('metadata_version'):
+      data['metadata_version'] = '2.1'
+      logger.info(f"Injected metadata_version: 2.1")
+
+  # Log metadata for debugging
+  logger.debug(f"PyPI package metadata for {binary}: name={data.get('name')}, version={data.get('version')}")
+
   data.update(
     {
       ":action": "file_upload",
@@ -390,7 +459,7 @@ def codeartifact_upload_binary(args, client, token_codeartifact, package_dict, b
     response = codeartifact_upload_npm(token_codeartifact, package_dict, binary)
   elif package_dict['type'] == 'pypi':
     response = codeartifact_upload_pypi(token_codeartifact, package_dict, binary)
-  elif package_dict['type'] == 'maven':
+  elif package_dict['type'] == 'maven' or package_dict['type'] == 'gradle':
     response = codeartifact_upload_maven(token_codeartifact, package_dict, binary)
   else:    
     logger.critical(f"Package type {package_dict['type']} not supported")

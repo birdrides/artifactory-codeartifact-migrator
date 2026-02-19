@@ -41,19 +41,20 @@ class TimeoutHTTPAdapter(HTTPAdapter):
         return super().send(request, **kwargs)
 
 retry_strategy = Retry(
-    total=10,
-    status_forcelist=[429, 500, 502, 503, 504],
-    method_whitelist=["HEAD", "GET", "OPTIONS"],
-    backoff_factor=1
+  total=10,
+  status_forcelist=[429, 500, 502, 503, 504],
+  allowed_methods=["HEAD", "GET", "OPTIONS"],
+  backoff_factor=1
 )
 
 # Make an API Call to Artifactory and return json
-def artifactory_http_call(args, api_path):
+def artifactory_http_call(args, api_path, raise_on_error=False):
   """
   artifactory_http_call makes an API Call to Artifactory.
 
   :param args: arguments passed to cli command
   :param api_path: api path to add to url call
+  :param raise_on_error: if True, raise an exception on non-200 instead of sys.exit(1)
   :return: json data of the http response text
   """
   artifactory_auth = (args.artifactoryuser, args.artifactorypass)
@@ -76,6 +77,8 @@ def artifactory_http_call(args, api_path):
   if response.status_code == 200:
     return json.loads(response.text)
   else:
+    if raise_on_error:
+      raise Exception(f"Artifactory HTTP {response.status_code} for {uri}: {str(response)}")
     logger.critical(f"Failure connecting to {uri} : {str(response)}")
     sys.exit(1)
 
@@ -88,7 +91,7 @@ def artifactory_package_search(args, package, repository):
   :param repository: repository to scans
   :return: boolean of success
   """
-  
+  logger.debug(f"Searching Artifactory for package {package} in repository {repository}")
   package_search = artifactory_http_call(args, '/api/storage/' + repository + '/' + package)
   success = False
   if repository + '/' + package in package_search.get('uri'):
@@ -112,6 +115,7 @@ def artifactory_package_binary_search(args, package_dict):
     else:
       prefix = ""
     uri = f"{args.artifactoryprotocol}://{args.artifactoryhost}{prefix}/{package_dict['repository']}/{package_dict['package'].split('/')[-1]}"
+    logger.debug(f"Artifactory PyPI binary search URI: {uri}")
     binary_search = artifactory_http_call(args, f"/api/storage/{package_dict['repository']}/{package_dict['package'].split('/')[-1]}?list&deep=1")    
     if binary_search.get('files'):
       for i in binary_search.get('files'):
@@ -128,27 +132,35 @@ def artifactory_package_binary_search(args, package_dict):
     else:
       logger.info(f"No files found in Artifactory for {package_dict['repository']} {package_dict['package']}")  
   else:
-    binary_search = artifactory_http_call(args, '/api/search/artifact?name=' + package_dict['package'].split('/')[-1] + '&repos=' + package_dict['repository'])    
+    uri_path = '/api/search/artifact?name=' + package_dict['package'].split('/')[-1] + '&repos=' + package_dict['repository']
+    logger.debug(f"Artifactory generic binary search URI: {uri_path}")
+    binary_search = artifactory_http_call(args, uri_path)
     for i in binary_search['results']:
-      if '/' + package_dict.get('package') + '/' in i['uri']:
-        if package_dict.get('version'):
-          if package_dict['type'] == 'npm':
-            if package_dict['package'].split('/')[-1] + '-' + package_dict.get('version') + '.tgz' in i['uri']:
-              binaries.append(i['uri'])
-          elif package_dict['type'] in ['pypi', 'maven']:
-            if '/' + package_dict.get('version') + '/' in i['uri']:
-              if not 'maven-metadata.xml' in i['uri']:
-                # Avoid files that aren't standard binaries
-                ## ToDo: This should just be a regex search with $ end
-                if '.pom' in i['uri'] or \
-                  '.jar' in i['uri'] or \
-                  '.tar.gz' in i['uri']:
-                  binaries.append(i['uri'])
-          else:
-            logger.critical(f"ERROR: Package type {package_dict['type']} not supported: {package_dict}")
-            sys.exit(1)
-        else:
-          binaries.append(i['uri'])
+        if '/' + package_dict.get('package') + '/' in i['uri']:
+            if package_dict.get('version'):
+                if package_dict['type'] == 'npm':
+                    # Only include .tgz files for npm
+                    if package_dict['package'].split('/')[-1] + '-' + package_dict.get('version') + '.tgz' in i['uri'] and i['uri'].endswith('.tgz'):
+                        binaries.append(i['uri'])
+                elif package_dict['type'] in ['pypi', 'maven', 'gradle']:
+                    if '/' + package_dict.get('version') + '/' in i['uri']:
+                        if not 'maven-metadata.xml' in i['uri']:
+                            # Avoid files that aren't standard binaries
+                            ## ToDo: This should just be a regex search with $ end
+                            if '.pom' in i['uri'] or \
+                                '.jar' in i['uri'] or \
+                                '.tar.gz' in i['uri']:
+                                binaries.append(i['uri'])
+                else:
+                    logger.critical(f"ERROR: Package type {package_dict['type']} not supported: {package_dict}")
+                    sys.exit(1)
+            else:
+                # For npm, only include .tgz files
+                if package_dict['type'] == 'npm':
+                    if i['uri'].endswith('.tgz'):
+                        binaries.append(i['uri'])
+                else:
+                    binaries.append(i['uri'])
   logger.debug(f"Binaries discovered:\n{binaries}")  
   return binaries
 

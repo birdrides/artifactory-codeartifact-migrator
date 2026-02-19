@@ -1,7 +1,7 @@
 #!/bin/bash
+set -euo pipefail
 # Refer to env.sh.template
 
-. ./env.sh
 
 command="pipenv run artifactory-codeartifact-migrator --artifactoryhost $ARTIFACTORY_HOST --artifactoryprefix $ARTIFACTORY_HOST_PREFIX --artifactoryuser $ARTIFACTORY_USERNAME --artifactorypass $ARTIFACTORY_PASSWORD --codeartifactdomain $CODEARTIFACT_DOMAIN --codeartifactaccount $CODEARTIFACT_ACCOUNT --codeartifactregion $CODEARTIFACT_REGION"
 if [ -z $ARTIFACTORY_REPOSITORIES ]; then
@@ -53,17 +53,10 @@ else
   command=$command" --clean"
 fi
 
-if [ -z $ACM_REFRESH ]; then
+if [ -z "${ACM_REFRESH:-}" ]; then
   echo "Cache refresh not defined, will use cache if configured."
 else
   echo "Cache refresh defined, will refresh packages."
-  command=$command" --refresh"
-fi
-
-if [ -z $ACM_REFRESH ]; then
-  echo "Refresh not defined, will use existing cache fetch information."
-else
-  echo "Refresh defined, will freshly fetch all information from Artifactory."
   command=$command" --refresh"
 fi
 
@@ -87,5 +80,7 @@ else
   echo "Procs defined, will use this value for parallel procs."
   command=$command" --procs $ACM_PROCS"
 fi
+
+echo "running: $command"
 
 $command
