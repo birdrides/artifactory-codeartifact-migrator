@@ -263,7 +263,7 @@ def get_artifactory_package_versions(binaries, package_dict):
 
 
 def get_filtered_artifactory_package_versions(
-    binaries, package_dict, artifactory_api_func, min_versions=3, max_age_days=365
+    binaries, package_dict, artifactory_api_func, min_versions=5, max_age_days=365
 ):
     """
     Extracts versions from binaries and filters them by date/count in a single pass.
@@ -395,32 +395,41 @@ def get_filtered_artifactory_package_versions(
         last_n_versions = [v for v, dt in undated_versions[:min_versions]]
     if len(last_year_versions) >= len(last_n_versions):
         filtered = last_year_versions.copy()
-        logger.debug(
-            f"[get_filtered_artifactory_package_versions] Using all versions from last {max_age_days} days: {filtered}"
+        logger.info(
+            f"[get_filtered_artifactory_package_versions] {pkg} - Using all versions from last {max_age_days} days: {filtered}"
         )
     else:
         filtered = last_n_versions.copy()
-        logger.debug(
-            f"[get_filtered_artifactory_package_versions] Using last {min_versions} versions by date: {filtered}"
+        logger.info(
+            f"[get_filtered_artifactory_package_versions] {pkg} - Using last {min_versions} versions by date: {filtered}"
         )
     undated = [v for v, dt in undated_versions]
     if undated:
-        logger.debug(
-            f"[get_filtered_artifactory_package_versions] Including undated versions (fallback): {undated}"
+        logger.info(
+            f"[get_filtered_artifactory_package_versions] {pkg} - Including undated versions (fallback): {undated}"
         )
         filtered += [v for v in undated if v not in filtered]
     filtered = [v for v, _ in version_dates if v in filtered]
-    logger.debug(
-        f"[get_filtered_artifactory_package_versions] All available versions: {[v for v, _ in version_dates]}"
-    )
-    logger.debug(
-        f"[get_filtered_artifactory_package_versions] Selected for migration: {filtered}"
-    )
+    all_versions = [v for v, _ in version_dates]
     filtered_out = [v for v, _ in version_dates if v not in filtered]
+
+    logger.info(
+        f"[get_filtered_artifactory_package_versions] {pkg} - All available versions: {all_versions}"
+    )
+    logger.info(
+        f"[get_filtered_artifactory_package_versions] {pkg} - Selected for migration: {filtered}"
+    )
     if filtered_out:
-        logger.debug(
-            f"[get_filtered_artifactory_package_versions] Filtered out (not migrated): {filtered_out}"
+        logger.info(
+            f"[get_filtered_artifactory_package_versions] {pkg} - Filtered out (not migrated): {filtered_out}"
         )
+
+    # Always-visible summary (shows without --verbose or --debug)
+    logger.info(
+        f"[version-filter] {pkg} | total={len(all_versions)} "
+        f"selected={len(filtered)} filtered_out={len(filtered_out)} "
+        f"| kept={filtered} | skipped={filtered_out}"
+    )
     return filtered
 
 
