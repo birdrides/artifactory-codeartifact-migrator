@@ -24,6 +24,28 @@ from . import monitor
 
 logger = monitor.getLogger()
 
+def get_repo_mapping():
+  """
+  Reads ACM_REPO_MAPPING from environment and returns a dict mapping
+  Artifactory repo name to CodeArtifact repo name.
+  Format: 'artifactory1:codeartifact1,artifactory2:codeartifact2'
+  """
+  mapping_str = os.environ.get("ACM_REPO_MAPPING")
+  mapping = {}
+  if mapping_str:
+    for pair in mapping_str.split(","):
+      if ":" in pair:
+        artifactory_repo, codeartifact_repo = pair.split(":", 1)
+        mapping[artifactory_repo.strip()] = codeartifact_repo.strip()
+  return mapping
+
+def map_repo_name(repository):
+  """
+  Returns the CodeArtifact repo name for a given Artifactory repo name.
+  Falls back to the original name if no mapping is defined.
+  """
+  return get_repo_mapping().get(repository, repository)
+
 def normalize_format(package_type):
   """
   normalize_format maps internal package type names to CodeArtifact format enum values.
@@ -90,8 +112,8 @@ def codeartifact_check_package_version(args, client, package_dict):
     package = package_dict['package']
   if package_dict['type'] == 'pypi':
     package = package_dict['package'].lower().replace('_', '-')
-  # Use codeartifact_repository if set (mapped name), otherwise fall back to repository
-  ca_repo = package_dict.get('codeartifact_repository') or package_dict.get('repository')
+  # Apply ACM_REPO_MAPPING to resolve the CodeArtifact repo name from the Artifactory repo name
+  ca_repo = map_repo_name(package_dict.get('repository'))
   if package_dict.get("namespace"):
     try:
       response = client.describe_package_version(
@@ -198,7 +220,7 @@ def codeartifact_wipe_package_version(args, client, package_dict):
     logger.info(f"Dryrun: Would wipe package version in codeartifact: {package_dict}")
   else:
     package = package_dict['package'].split('/')[-1]
-    ca_repo = package_dict.get('codeartifact_repository') or package_dict.get('repository')
+    ca_repo = map_repo_name(package_dict.get('repository'))
     if package_dict.get('namespace'):
       response = client.delete_package_versions(
         domain=args.codeartifactdomain,
@@ -233,7 +255,7 @@ def codeartifact_update_package_status(args, client, package_dict):
   :param client: api client object for aws codeartifact
   :param package_dict: standard package dictionary to inspect
   """
-  ca_repo = package_dict.get('codeartifact_repository') or package_dict.get('repository')
+  ca_repo = map_repo_name(package_dict.get('repository'))
   if package_dict.get('namespace'):
     response = client.update_package_versions_status(
       domain=args.codeartifactdomain,
