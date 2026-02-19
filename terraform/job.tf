@@ -49,9 +49,12 @@ resource "aws_iam_policy" "acm_codeartifact" {
         }
       },
       {
-        Sid      = "CodeArtifactAuthToken"
-        Effect   = "Allow"
-        Action   = ["codeartifact:GetAuthorizationToken"]
+        Sid    = "CodeArtifactDomainAccess"
+        Effect = "Allow"
+        Action = [
+          "codeartifact:GetAuthorizationToken",
+          "codeartifact:GetRepositoryEndpoint",
+        ]
         Resource = [local.codeartifact_domain_arn]
       },
       {
@@ -60,17 +63,25 @@ resource "aws_iam_policy" "acm_codeartifact" {
         Action = [
           "codeartifact:GetRepositoryEndpoint",
           "codeartifact:ReadFromRepository",
-          "codeartifact:PublishPackageVersion",
-          "codeartifact:PutPackageMetadata",
           "codeartifact:ListPackages",
           "codeartifact:ListPackageVersions",
-          "codeartifact:DescribePackageVersion",
           "codeartifact:DescribeRepository",
           "codeartifact:CreateRepository",
+        ]
+        Resource = [local.codeartifact_repository_wildcard]
+      },
+      {
+        # Package-level actions require the package ARN resource type
+        Sid    = "CodeArtifactPackageAccess"
+        Effect = "Allow"
+        Action = [
+          "codeartifact:PublishPackageVersion",
+          "codeartifact:PutPackageMetadata",
+          "codeartifact:DescribePackageVersion",
           "codeartifact:DeletePackageVersions",
           "codeartifact:UpdatePackageVersionsStatus",
         ]
-        Resource = [local.codeartifact_repository_wildcard]
+        Resource = [local.codeartifact_package_wildcard]
       },
       {
         # ListRepositories is a list operation that requires Resource: "*"
@@ -270,6 +281,13 @@ resource "kubernetes_job_v1" "acm_migration" {
           env {
             name  = "PYTHONUNBUFFERED"
             value = "1"
+          }
+
+          # Repo name mapping: Artifactory repo → CodeArtifact repo.
+          # Read by get_repo_mapping() in replicator.py via os.environ.get("ACM_REPO_MAPPING").
+          env {
+            name  = "ACM_REPO_MAPPING"
+            value = local.acm_repo_mapping
           }
 
           # IRSA automatically injects AWS_ROLE_ARN + AWS_WEB_IDENTITY_TOKEN_FILE.
