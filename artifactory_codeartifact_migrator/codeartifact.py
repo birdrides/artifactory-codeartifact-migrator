@@ -24,6 +24,18 @@ from . import monitor
 
 logger = monitor.getLogger()
 
+def normalize_format(package_type):
+  """
+  normalize_format maps internal package type names to CodeArtifact format enum values.
+  CodeArtifact does not have a 'gradle' format; Gradle artifacts are stored as 'maven'.
+
+  :param package_type: internal package type string (e.g. 'gradle', 'maven', 'pypi', 'npm')
+  :return: CodeArtifact-compatible format string
+  """
+  if package_type == 'gradle':
+    return 'maven'
+  return package_type
+
 def mocked_requests_get(*args, **kwargs):
   """
   mocked_requests_get returns a false on ok status for a response object
@@ -78,12 +90,15 @@ def codeartifact_check_package_version(args, client, package_dict):
     package = package_dict['package']
   if package_dict['type'] == 'pypi':
     package = package_dict['package'].lower().replace('_', '-')
+  # Use codeartifact_repository if set (mapped name), otherwise fall back to repository
+  ca_repo = package_dict.get('codeartifact_repository') or package_dict.get('repository')
   if package_dict.get("namespace"):
     try:
       response = client.describe_package_version(
           domain=args.codeartifactdomain,
-          repository=package_dict.get('repository'),
-          format=package_dict.get('type'),
+          domainOwner=args.codeartifactaccount,
+          repository=ca_repo,
+          format=normalize_format(package_dict.get('type')),
           namespace=package_dict.get("namespace"),
           package=package.split('/')[-1],
           packageVersion=package_dict.get('version')
@@ -95,8 +110,9 @@ def codeartifact_check_package_version(args, client, package_dict):
     try:
       response = client.describe_package_version(
         domain=args.codeartifactdomain,
-        repository=package_dict.get('repository'),
-        format=package_dict.get('type'),
+        domainOwner=args.codeartifactaccount,
+        repository=ca_repo,
+        format=normalize_format(package_dict.get('type')),
         package=package,
         packageVersion=package_dict.get('version')
       )
@@ -124,6 +140,7 @@ def codeartifact_create_repository(args, client, repository):
   else:
     response = client.create_repository(
       domain=args.codeartifactdomain,
+      domainOwner=args.codeartifactaccount,
       repository=repository
     )
     logger.debug(f"Reponse for creating {repository} on codeartifact:\n{response}")
@@ -159,13 +176,14 @@ def codeartifact_get_repository_endpoint(args, client, repository, format):
   try:
     response = client.get_repository_endpoint(
         domain=args.codeartifactdomain,
+        domainOwner=args.codeartifactaccount,
         repository=repository,
-        format=format
+        format=normalize_format(format)
     )
     repo_dict = json.loads(str(response).replace("\'", "\""))
     return repo_dict['repositoryEndpoint']
-  except:
-    logger.critical(f"Unable to get Codeartifact repository endpoint for {repository}")
+  except Exception as e:
+    logger.critical(f"Unable to get Codeartifact repository endpoint for {repository}: {e}")
     sys.exit(1)
 
 def codeartifact_wipe_package_version(args, client, package_dict):
@@ -180,11 +198,13 @@ def codeartifact_wipe_package_version(args, client, package_dict):
     logger.info(f"Dryrun: Would wipe package version in codeartifact: {package_dict}")
   else:
     package = package_dict['package'].split('/')[-1]
+    ca_repo = package_dict.get('codeartifact_repository') or package_dict.get('repository')
     if package_dict.get('namespace'):
       response = client.delete_package_versions(
         domain=args.codeartifactdomain,
-        repository=package_dict.get('repository'),
-        format=package_dict.get('type'),
+        domainOwner=args.codeartifactaccount,
+        repository=ca_repo,
+        format=normalize_format(package_dict.get('type')),
         namespace=package_dict.get('namespace'),
         package=package,
         versions=[
@@ -194,8 +214,9 @@ def codeartifact_wipe_package_version(args, client, package_dict):
     else:
       response = client.delete_package_versions(
         domain=args.codeartifactdomain,
-        repository=package_dict.get('repository'),
-        format=package_dict.get('type'),
+        domainOwner=args.codeartifactaccount,
+        repository=ca_repo,
+        format=normalize_format(package_dict.get('type')),
         package=package_dict.get('package'),
         versions=[
             package_dict.get('version'),
@@ -212,11 +233,13 @@ def codeartifact_update_package_status(args, client, package_dict):
   :param client: api client object for aws codeartifact
   :param package_dict: standard package dictionary to inspect
   """
+  ca_repo = package_dict.get('codeartifact_repository') or package_dict.get('repository')
   if package_dict.get('namespace'):
     response = client.update_package_versions_status(
       domain=args.codeartifactdomain,
-      repository=package_dict.get('repository'),
-      format=package_dict.get('type'),
+      domainOwner=args.codeartifactaccount,
+      repository=ca_repo,
+      format=normalize_format(package_dict.get('type')),
       namespace=package_dict.get('namespace').replace('/', '.'),
       package=package_dict.get("package").split('/')[-1],
       versions=[package_dict.get('version'),],
@@ -225,8 +248,9 @@ def codeartifact_update_package_status(args, client, package_dict):
   else:
     response = client.update_package_versions_status(
       domain=args.codeartifactdomain,
-      repository=package_dict.get('repository'),
-      format=package_dict.get('type'),
+      domainOwner=args.codeartifactaccount,
+      repository=ca_repo,
+      format=normalize_format(package_dict.get('type')),
       package=package_dict.get("package"),
       versions=[package_dict.get('version'),],
       targetStatus='Published'
