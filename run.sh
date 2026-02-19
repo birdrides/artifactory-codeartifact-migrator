@@ -1,29 +1,7 @@
 #!/bin/bash
+set -euo pipefail
 # Refer to env.sh.template
 
-
-# Only source env.sh if not running in Docker/K8s
-if [ -z "$DOCKER" ]; then
-  . ./env.sh
-fi
-
-if [ ! -f "$HOME/.aws/credentials" ]; then
-  # Fetch secrets from Vault
-  export SVC_ACCESS_KEY=$(vault kv get -field=access_key aws-svc/sts/jenkins)
-  export SVC_SECRET_KEY=$(vault kv get -field=secret_key aws-svc/sts/jenkins)
-  export SVC_SESSION_TOKEN=$(vault kv get -field=security_token aws-svc/sts/jenkins)
-
-  export ARTIFACTORY_USERNAME=$(vault kv get -field=user services/jenkins/artifactory)
-  export ARTIFACTORY_PASSWORD=$(vault kv get -field=api_key services/jenkins/artifactory)
-
-  # Write to AWS credentials file
-  cat > "$HOME/.aws/credentials" <<EOF
-  [bird-svc]
-  aws_access_key_id = ${SVC_ACCESS_KEY}
-  aws_secret_access_key = ${SVC_SECRET_KEY}
-  aws_session_token = ${SVC_SESSION_TOKEN}
-EOF
-fi
 
 command="pipenv run artifactory-codeartifact-migrator --artifactoryhost $ARTIFACTORY_HOST --artifactoryprefix $ARTIFACTORY_HOST_PREFIX --artifactoryuser $ARTIFACTORY_USERNAME --artifactorypass $ARTIFACTORY_PASSWORD --codeartifactdomain $CODEARTIFACT_DOMAIN --codeartifactaccount $CODEARTIFACT_ACCOUNT --codeartifactregion $CODEARTIFACT_REGION"
 if [ -z $ARTIFACTORY_REPOSITORIES ]; then
@@ -75,17 +53,10 @@ else
   command=$command" --clean"
 fi
 
-if [ -z $ACM_REFRESH ]; then
+if [ -z "${ACM_REFRESH:-}" ]; then
   echo "Cache refresh not defined, will use cache if configured."
 else
   echo "Cache refresh defined, will refresh packages."
-  command=$command" --refresh"
-fi
-
-if [ -z $ACM_REFRESH ]; then
-  echo "Refresh not defined, will use existing cache fetch information."
-else
-  echo "Refresh defined, will freshly fetch all information from Artifactory."
   command=$command" --refresh"
 fi
 
@@ -96,12 +67,12 @@ else
   command=$command" --output $ACM_OUTPUT"
 fi
 
-# if [ -z $ACM_DYNAMODB ]; then
-#   echo "DynamoDB not defined, will use local cache if specified."
-# else
-#   echo "DynamoDB specified, will use DynamoDB."
-#   command=$command" --dynamodb"
-# fi
+if [ -z $ACM_DYNAMODB ]; then
+  echo "DynamoDB not defined, will use local cache if specified."
+else
+  echo "DynamoDB specified, will use DynamoDB."
+  command=$command" --dynamodb"
+fi
 
 if [ -z $ACM_PROCS ]; then
   echo "Procs not defined, will use default parallel procs."
