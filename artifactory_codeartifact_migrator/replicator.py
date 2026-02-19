@@ -666,8 +666,15 @@ def replicate_package(args, client, token_codeartifact, package_dict, db_file):
       The final snapshot subversion does get set to published at the end though.
       - Pending AWS support
       """
+            # For Maven/Gradle, sort URIs so that hash sidecar files (.sha512, .md5, .sha1)
+            # are uploaded AFTER their corresponding artifacts. CodeArtifact rejects a hash
+            # upload if the parent artifact hasn't been uploaded yet.
+            if package["type"] in ["maven", "gradle"]:
+                hash_exts = (".sha512", ".md5", ".sha1")
+                uris = sorted(uris, key=lambda u: (1 if u.split("/")[-1].endswith(hash_exts) else 0))
             for uri in uris:
                 uri_formatted = uri.replace("api/storage/", "")
+                filename = uri.split("/")[-1]
                 if args.dryrun:
                     logger.info(
                         f"Dryrun: Would download binary from Artifactory: {uri_formatted}"
@@ -684,7 +691,7 @@ def replicate_package(args, client, token_codeartifact, package_dict, db_file):
                         client,
                         token_codeartifact,
                         package,
-                        tree + "/" + uri.split("/")[-1],
+                        tree + "/" + filename,
                     )
                     logger.debug(f"Response: {response}")
                     if not response.ok:
@@ -821,9 +828,10 @@ def replicate_specific_packages(
         args, client, args.repositories, codeartifact_repos
     )
     # For specified package mode, we are only making a token once instead of refreshing it periodically
-    token_codeartifact = client.get_authorization_token(domain=args.codeartifactdomain)[
-        "authorizationToken"
-    ]
+    token_codeartifact = client.get_authorization_token(
+        domain=args.codeartifactdomain,
+        domainOwner=args.codeartifactaccount,
+    )["authorizationToken"]
     if args.dryrun:
         endpoint = f"codeartifact-test-endpoint-dryrun.com/{args.repositories}"
         real_endpoint = codeartifact.codeartifact_get_repository_endpoint(
@@ -1215,9 +1223,10 @@ def replicate_repository(
         f"Package list to replicate from Artifactory repository {repository}: {package_list}"
     )
 
-    token_codeartifact = client.get_authorization_token(domain=args.codeartifactdomain)[
-        "authorizationToken"
-    ]
+    token_codeartifact = client.get_authorization_token(
+        domain=args.codeartifactdomain,
+        domainOwner=args.codeartifactaccount,
+    )["authorizationToken"]
     now = int(time.time())
 
     proclist = []
@@ -1255,7 +1264,8 @@ def replicate_repository(
             # Token refresh phase
             if int(time.time()) > now + (token_refresh * 60 * 60):
                 token_codeartifact = client.get_authorization_token(
-                    domain=args.codeartifactdomain
+                    domain=args.codeartifactdomain,
+                    domainOwner=args.codeartifactaccount,
                 )["authorizationToken"]
                 now = int(time.time())
 
