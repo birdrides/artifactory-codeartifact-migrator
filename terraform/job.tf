@@ -212,6 +212,10 @@ resource "kubernetes_job_v1" "acm_migration" {
     }
   }
 
+  # Do not block terraform apply waiting for the job to complete.
+  # Monitor progress with: kubectl logs -n acm-migration -l app.kubernetes.io/name=acm-migration -f
+  wait_for_completion = false
+
   spec {
     # One-shot migration job – do not restart on failure.
     # Increase backoff_limit if you want automatic retries.
@@ -285,7 +289,7 @@ resource "kubernetes_job_v1" "acm_migration" {
 
           resources {
             requests = {
-              cpu    = "500m"
+              cpu    = "1"
               memory = "1Gi"
             }
             limits = {
@@ -307,11 +311,6 @@ resource "kubernetes_job_v1" "acm_migration" {
         }
       }
     }
-  }
-
-  # Wait up to 6 hours for the job to complete before Terraform times out.
-  timeouts {
-    create = "6h"
   }
 
   # Force job replacement on every apply so re-running `terraform apply`
