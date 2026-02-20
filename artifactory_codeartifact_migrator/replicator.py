@@ -250,7 +250,7 @@ def get_artifactory_package_versions(binaries, package_dict):
                 # Only add if it looks like a version (not a file extension)
                 if version_candidate and not any(
                     version_candidate.endswith(ext)
-                    for ext in [".pom", ".jar", ".tar.gz", ".whl", ".egg"]
+                    for ext in [".pom", ".jar", ".tar.gz", ".whl", ".egg", ".module", ".sha512", ".md5", ".sha1"]
                 ):
                     version = version_candidate
                 else:
@@ -469,7 +469,7 @@ def replicate_package(args, client, token_codeartifact, package_dict, db_file):
         all_packages_published = True
         # Get all versions of the package and append to list to replicate
         skip = False
-        if args.cache:
+        if args.cache and not getattr(args, 'force', False):
             if caching.check_all_versions_published(
                 args, package_dict["package"], package_dict["repository"], db_file
             ):
@@ -580,7 +580,7 @@ def replicate_package(args, client, token_codeartifact, package_dict, db_file):
     packages_to_replicate = []
     for temp_dict in packages_to_replicate_temp:
         skip = False
-        if args.cache:
+        if args.cache and not getattr(args, 'force', False):
             if caching.check_version_published(
                 args,
                 temp_dict["package"],
@@ -597,6 +597,13 @@ def replicate_package(args, client, token_codeartifact, package_dict, db_file):
             check_result = codeartifact.codeartifact_check_package_version(
                 args, client, temp_dict
             )
+            # --force: treat already-Published versions as needing a wipe+re-upload
+            # so that missing asset files (e.g. .module) are picked up.
+            if getattr(args, 'force', False) and check_result == 0:
+                logger.info(
+                    f"Force flag set: wiping already-Published version for re-upload: {temp_dict['repository']} {temp_dict['package']} {temp_dict['version']}"
+                )
+                check_result = 2
             if check_result == 2:
                 # This means the package was not fully published and will be wiped and published
                 codeartifact.codeartifact_wipe_package_version(args, client, temp_dict)
@@ -937,7 +944,7 @@ def replicate_specific_packages(
 
             package_dict = append_package_specific_keys(args, package_dict)
 
-            if args.cache:
+            if args.cache and not getattr(args, 'force', False):
                 if not caching.check_version_published(
                     args,
                     package_name,
@@ -976,7 +983,7 @@ def replicate_specific_packages(
                 logger.info(
                     f"Cache: All versions of package {args.repositories} {package_name} were already fetched."
                 )
-                if caching.check_all_versions_published(
+                if not getattr(args, 'force', False) and caching.check_all_versions_published(
                     args, package_name, args.repositories, db_file
                 ):
                     logger.info(
@@ -986,7 +993,7 @@ def replicate_specific_packages(
                     for version in caching.fetch_all_versions(
                         args, package_name, args.repositories, db_file
                     ):
-                        if not caching.check_version_published(
+                        if getattr(args, 'force', False) or not caching.check_version_published(
                             args, package_name, args.repositories, version, db_file
                         ):
                             package_dict = {
@@ -1191,7 +1198,7 @@ def replicate_repository(
                     + "published and try again with argument --packages specifying the "
                     + "version."
                 )
-        if caching.check_repository_all_versions_published(args, repository, db_file):
+        if not getattr(args, 'force', False) and caching.check_repository_all_versions_published(args, repository, db_file):
             logger.info(
                 f"Cache: Repository {repository} already had all artifacts attempt publishing, skipping."
             )
@@ -1388,7 +1395,7 @@ def replicate(args):
             else:
                 if args.refresh:
                     logger.info(f"Refreshing all packages in {args.repositories}")
-                    caching.reset_fetched_packages(args.repositories, db_file)
+                    caching.reset_fetched_packages(args, args.repositories, db_file)
                 check_artifactory_repos(args.repositories, artifactory_repos)
                 replicate_specific_packages(
                     args, client, artifactory_repos, codeartifact_repos, db_file

@@ -149,7 +149,8 @@ def artifactory_package_binary_search(args, package_dict):
                             ## ToDo: This should just be a regex search with $ end
                             if '.pom' in i['uri'] or \
                                 '.jar' in i['uri'] or \
-                                '.tar.gz' in i['uri']:
+                                '.tar.gz' in i['uri'] or \
+                                '.module' in i['uri']:
                                 binaries.append(i['uri'])
                 else:
                     logger.critical(f"ERROR: Package type {package_dict['type']} not supported: {package_dict}")

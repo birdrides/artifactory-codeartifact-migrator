@@ -60,6 +60,13 @@ else
   command=$command" --refresh"
 fi
 
+if [ -z "${ACM_FORCE:-}" ]; then
+  echo "Force not defined, already-Published versions will be skipped."
+else
+  echo "Force defined, will wipe and re-upload already-Published versions."
+  command=$command" --force"
+fi
+
 if [ -z $ACM_OUTPUT ]; then
   echo "Log output not defined, logs will be sent to stdout."
 else
