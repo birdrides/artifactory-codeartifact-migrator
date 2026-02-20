@@ -86,3 +86,7 @@ data "aws_ecr_repository" "acm_migration" {
 module "generic_data" {
   source = "boring-registry.svc.bird.co/bird/generic-data/generic"
 }
+
+output "acm_shell_command" {
+  value = local.acm_shell_command
+}
