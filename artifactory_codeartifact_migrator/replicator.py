@@ -780,10 +780,16 @@ def replicate_package(args, client, token_codeartifact, package_dict, db_file):
                 f"Dryrun: Would validate package {package['package']} {package['version']} exists in codeartifact."
             )
         else:
-            if (
-                codeartifact.codeartifact_check_package_version(args, client, package)
-                != 0
-            ):
+            # Retry the check a few times to allow CodeArtifact time to index the package
+            check_result = 1
+            for _attempt in range(3):
+                check_result = codeartifact.codeartifact_check_package_version(args, client, package)
+                if check_result == 0:
+                    break
+                if _attempt < 2:
+                    logger.debug(f"Package {package['package']} {package['version']} not yet Published in CodeArtifact, retrying in 5s...")
+                    time.sleep(5)
+            if check_result != 0:
                 logger.warning(missing_error)
                 all_packages_published = False
                 publish_fail = True
@@ -853,8 +859,10 @@ def replicate_specific_packages(
             f"Repository {args.repositories} package type {package_type} not supported."
         )
         sys.exit(1)
+    # Apply repo mapping: use the CodeArtifact repo name for all CodeArtifact operations
+    codeartifact_repo = map_repo_name(args.repositories)
     codeartifact.codeartifact_check_create_repo(
-        args, client, args.repositories, codeartifact_repos
+        args, client, codeartifact_repo, codeartifact_repos
     )
     # For specified package mode, we are only making a token once instead of refreshing it periodically
     token_codeartifact = client.get_authorization_token(
@@ -862,14 +870,14 @@ def replicate_specific_packages(
         domainOwner=args.codeartifactaccount,
     )["authorizationToken"]
     if args.dryrun:
-        endpoint = f"codeartifact-test-endpoint-dryrun.com/{args.repositories}"
+        endpoint = f"codeartifact-test-endpoint-dryrun.com/{codeartifact_repo}"
         real_endpoint = codeartifact.codeartifact_get_repository_endpoint(
-            args, client, args.repositories, package_type
+            args, client, codeartifact_repo, package_type
         )
         logger.info(f"Dryrun: true endpoint will be: {real_endpoint}")
     else:
         endpoint = codeartifact.codeartifact_get_repository_endpoint(
-            args, client, args.repositories, package_type
+            args, client, codeartifact_repo, package_type
         )
     for package in args.packages.split(" "):
         logger.debug(f"Processing package: {package}")

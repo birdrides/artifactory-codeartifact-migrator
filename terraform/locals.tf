@@ -10,7 +10,7 @@ locals {
   # Naming
   # ---------------------------------------------------------------------------
   name_prefix       = "acm-migration"
-  image_tag = "0.0.8"
+  image_tag = "0.0.11"
   default_image_uri = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.region}.amazonaws.com/acm-migration:${local.image_tag}"
 
   log_retention_days = 14
@@ -50,18 +50,19 @@ locals {
   # ---------------------------------------------------------------------------
   # Specific packages to migrate (space-separated list passed to --packages).
   # Set to [] to replicate all packages in the repository.
-  # Used here to target Gradle plugin marker artifacts that were skipped during
-  # the full repo migration.
+  # Used here to migrate historical versions of Gradle plugin marker artifacts
+  # from Artifactory to CodeArtifact (the build system only published 1-2 recent
+  # versions; older history lives only in Artifactory).
   # ---------------------------------------------------------------------------
-  artifactory_packages = [
-    "co/bird/gradle/clientmodule/co.bird.gradle.clientmodule.gradle.plugin",
-    "co/bird/gradle/dependency/co.bird.gradle.dependency.gradle.plugin",
-    "co/bird/gradle/deployable/co.bird.gradle.deployable.gradle.plugin",
-    "co/bird/gradle/factoring/co.bird.gradle.factoring.gradle.plugin",
-    "co/bird/gradle/flyway/co.bird.gradle.flyway.gradle.plugin",
-    "co/bird/gradle/metrics/co.bird.gradle.metrics.gradle.plugin",
-    "co/bird/gradle/version/co.bird.gradle.version.gradle.plugin",
-  ]
+  # artifactory_packages = [
+  #   "co/bird/gradle/clientmodule/co.bird.gradle.clientmodule.gradle.plugin",
+  #   "co/bird/gradle/dependency/co.bird.gradle.dependency.gradle.plugin",
+  #   "co/bird/gradle/deployable/co.bird.gradle.deployable.gradle.plugin",
+  #   "co/bird/gradle/factoring/co.bird.gradle.factoring.gradle.plugin",
+  #   "co/bird/gradle/flyway/co.bird.gradle.flyway.gradle.plugin",
+  #   "co/bird/gradle/metrics/co.bird.gradle.metrics.gradle.plugin",
+  #   "co/bird/gradle/version/co.bird.gradle.version.gradle.plugin",
+  # ]
 
   # ---------------------------------------------------------------------------
   # Repo name mapping: Artifactory repo → CodeArtifact repo
@@ -114,7 +115,7 @@ locals {
     "--codeartifactaccount ${local.codeartifact_account}",
     "--codeartifactregion ${local.codeartifact_region}",
     length(local.artifactory_repositories) > 0 ? "--repositories ${join(" ", local.artifactory_repositories)}" : "",
-    length(local.artifactory_packages) > 0 ? "--packages '${join(" ", local.artifactory_packages)}'" : "",
+    # length(local.artifactory_packages) > 0 ? "--packages '${join(" ", local.artifactory_packages)}'" : "",
     local.acm_dryrun ? "--dryrun" : "",
     local.acm_verbose ? "-v" : "",
     local.acm_debug ? "--debug" : "",

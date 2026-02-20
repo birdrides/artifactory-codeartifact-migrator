@@ -120,8 +120,8 @@ resource "kubernetes_job_v1" "acm_migration" {
           # CLI flags are assembled in locals.tf (acm_shell_command).
           # /bin/sh -c is required so the shell expands $ARTIFACTORY_USERNAME
           # and $ARTIFACTORY_PASSWORD from the K8s Secret env vars at runtime.
-          command = ["/bin/sh", "-c"]
-          args    = [local.acm_shell_command]
+          # command = ["/bin/sh", "-c"]
+          # args    = [local.acm_shell_command]
 
           # Inject Artifactory credentials from the K8s Secret
           env {

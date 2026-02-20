@@ -125,8 +125,8 @@ def codeartifact_check_package_version(args, client, package_dict):
           package=package.split('/')[-1],
           packageVersion=package_dict.get('version')
       )
-    except:
-      logger.debug(f"Package not found in Codeartifact: {package_dict['package']} {package_dict['version']}")
+    except Exception as e:
+      logger.debug(f"Package not found in Codeartifact: {package_dict['package']} {package_dict['version']} (namespace={package_dict.get('namespace')}, repo={ca_repo}): {e}")
       return 1
   else:
     try:
@@ -138,8 +138,8 @@ def codeartifact_check_package_version(args, client, package_dict):
         package=package,
         packageVersion=package_dict.get('version')
       )
-    except:
-      logger.debug(f"Package not found in Codeartifact: {package_dict['package']} {package_dict['version']}")
+    except Exception as e:
+      logger.debug(f"Package not found in Codeartifact: {package_dict['package']} {package_dict['version']} (repo={ca_repo}): {e}")
       return 1
 
   if response['packageVersion']['status'] == 'Published':
