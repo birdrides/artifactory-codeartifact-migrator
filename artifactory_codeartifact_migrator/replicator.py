@@ -705,30 +705,59 @@ def replicate_package(args, client, token_codeartifact, package_dict, db_file):
                         publish_error = publish_error + error_detail
             # Required after pushing maven jar/pom's
             if package["type"] in ["maven", "gradle"] and publish_fail == False:
-                # This sets maven versions to published status
-                uri = (
-                    uri_formatted.removesuffix(uri_formatted.split("/")[-1])
-                    + "maven-metadata.xml"
-                )
                 if args.dryrun:
                     logger.info(
-                        f"Dryrun: Would download binary from Artifactory: {uri}"
-                    )
-                    logger.info(
-                        f"Dryrun: Would upload binary to codeartifact: https://{package['endpoint']}/{package['package']}/{package['version']}"
+                        f"Dryrun: Would upload maven-metadata.xml and set status to Published for {package['package']} {package['version']}"
                     )
                 else:
-                    artifactory.artifactory_binary_fetch(
-                        args, uri, replication_path, foldername
+                    # Try to fetch and upload maven-metadata.xml from the version directory.
+                    # This helps CodeArtifact mark the version as Published for standard Maven packages.
+                    # For packages that only have a .pom (e.g. Gradle plugin markers), the
+                    # maven-metadata.xml may not exist at the version level — in that case we
+                    # skip the upload and rely solely on update_package_versions_status below.
+                    meta_uri = (
+                        uri_formatted.removesuffix(uri_formatted.split("/")[-1])
+                        + "maven-metadata.xml"
                     )
-                    response = codeartifact.codeartifact_upload_binary(
-                        args,
-                        client,
-                        token_codeartifact,
-                        package,
-                        tree + "/maven-metadata.xml",
-                    )
-                    # This is a failsafe, sometimes maven-metadata.xml doesn't force status to Published
+                    # Try to fetch maven-metadata.xml and upload it to CodeArtifact.
+                    # First try the version-level path (standard Maven layout):
+                    #   <repo>/<package>/<version>/maven-metadata.xml
+                    # If not found, try the package-level path (Gradle plugin marker layout):
+                    #   <repo>/<package>/maven-metadata.xml
+                    # Uploading a 404 HTML page would corrupt the package state, so we
+                    # check existence via the Artifactory storage API before fetching.
+                    meta_found = False
+                    for meta_api_path in [
+                        f"/api/storage/{package['repository']}/{package['package']}/{package['version']}/maven-metadata.xml",
+                        f"/api/storage/{package['repository']}/{package['package']}/maven-metadata.xml",
+                    ]:
+                        try:
+                            artifactory.artifactory_http_call(args, meta_api_path, raise_on_error=True)
+                            # File exists — derive the download URL and fetch it
+                            meta_download_uri = meta_api_path.replace("/api/storage/", "")
+                            # Build full Artifactory URL
+                            if args.artifactoryprefix:
+                                prefix = f"/{args.artifactoryprefix}"
+                            else:
+                                prefix = ""
+                            meta_full_uri = f"{args.artifactoryprotocol}://{args.artifactoryhost}{prefix}/{meta_download_uri}"
+                            artifactory.artifactory_binary_fetch(
+                                args, meta_full_uri, replication_path, foldername
+                            )
+                            codeartifact.codeartifact_upload_binary(
+                                args,
+                                client,
+                                token_codeartifact,
+                                package,
+                                tree + "/maven-metadata.xml",
+                            )
+                            meta_found = True
+                            break
+                        except Exception as e:
+                            logger.debug(f"maven-metadata.xml not found at {meta_api_path}: {e}")
+                    if not meta_found:
+                        logger.debug(f"No maven-metadata.xml found for {package['package']} {package['version']}, relying on update_package_versions_status")
+                    # Always call update_package_versions_status as a failsafe to force Published status
                     codeartifact.codeartifact_update_package_status(
                         args, client, package
                     )
@@ -1200,17 +1229,8 @@ def replicate_repository(
                         if len(uri_list) > 3:
                             package_path = uri_list[:-2]
                             package_name = "/".join(package_path)
-                            # Skip Gradle plugin marker artifacts.
-                            # These end with '.gradle.plugin' and are thin POMs that
-                            # just redirect to the real plugin artifact. Publishing
-                            # them to CodeArtifact is redundant and causes duplicates.
                             if package_name and package_name not in package_list:
-                                if not package_name.split("/")[-1].endswith(".gradle.plugin"):
-                                    package_list.append(package_name)
-                                else:
-                                    logger.info(
-                                        f"Skipping Gradle plugin marker artifact: {package_name}"
-                                    )
+                                package_list.append(package_name)
 
         package_list = sorted(set(package_list))
 

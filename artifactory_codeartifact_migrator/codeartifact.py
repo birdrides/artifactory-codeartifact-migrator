@@ -256,29 +256,32 @@ def codeartifact_update_package_status(args, client, package_dict):
   :param package_dict: standard package dictionary to inspect
   """
   ca_repo = map_repo_name(package_dict.get('repository'))
-  if package_dict.get('namespace'):
-    response = client.update_package_versions_status(
-      domain=args.codeartifactdomain,
-      domainOwner=args.codeartifactaccount,
-      repository=ca_repo,
-      format=normalize_format(package_dict.get('type')),
-      namespace=package_dict.get('namespace').replace('/', '.'),
-      package=package_dict.get("package").split('/')[-1],
-      versions=[package_dict.get('version'),],
-      targetStatus='Published'
-    )
-  else:
-    response = client.update_package_versions_status(
-      domain=args.codeartifactdomain,
-      domainOwner=args.codeartifactaccount,
-      repository=ca_repo,
-      format=normalize_format(package_dict.get('type')),
-      package=package_dict.get("package"),
-      versions=[package_dict.get('version'),],
-      targetStatus='Published'
-    )
-  update_status_dict = json.loads(str(response).replace("\'", "\""))
-  logger.info(f"Update status for package {package_dict.get('package')}: {update_status_dict.get('ResponseMetadata').get('HTTPStatusCode')}")
+  try:
+    if package_dict.get('namespace'):
+      response = client.update_package_versions_status(
+        domain=args.codeartifactdomain,
+        domainOwner=args.codeartifactaccount,
+        repository=ca_repo,
+        format=normalize_format(package_dict.get('type')),
+        namespace=package_dict.get('namespace').replace('/', '.'),
+        package=package_dict.get("package").split('/')[-1],
+        versions=[package_dict.get('version'),],
+        targetStatus='Published'
+      )
+    else:
+      response = client.update_package_versions_status(
+        domain=args.codeartifactdomain,
+        domainOwner=args.codeartifactaccount,
+        repository=ca_repo,
+        format=normalize_format(package_dict.get('type')),
+        package=package_dict.get("package"),
+        versions=[package_dict.get('version'),],
+        targetStatus='Published'
+      )
+    update_status_dict = json.loads(str(response).replace("\'", "\""))
+    logger.info(f"Update status for package {package_dict.get('package')}: {update_status_dict.get('ResponseMetadata').get('HTTPStatusCode')}")
+  except Exception as e:
+    logger.warning(f"Failed to update package status for {package_dict.get('package')} {package_dict.get('version')} in {ca_repo}: {e}")
 
 def codeartifact_upload_npm(token_codeartifact, package_dict, binary):
   """

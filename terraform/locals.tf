@@ -10,7 +10,7 @@ locals {
   # Naming
   # ---------------------------------------------------------------------------
   name_prefix       = "acm-migration"
-  image_tag = "0.0.2"
+  image_tag = "0.0.8"
   default_image_uri = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.region}.amazonaws.com/acm-migration:${local.image_tag}"
 
   log_retention_days = 14
@@ -38,6 +38,7 @@ locals {
 
   codeartifact_domain_arn          = "arn:aws:codeartifact:${local.codeartifact_region}:${local.codeartifact_account}:domain/${local.codeartifact_domain}"
   codeartifact_repository_wildcard = "arn:aws:codeartifact:${local.codeartifact_region}:${local.codeartifact_account}:repository/${local.codeartifact_domain}/*"
+  codeartifact_package_wildcard    = "arn:aws:codeartifact:${local.codeartifact_region}:${local.codeartifact_account}:package/${local.codeartifact_domain}/*"
 
   # ---------------------------------------------------------------------------
   # Migration scope
@@ -47,13 +48,36 @@ locals {
   artifactory_repositories = ["internal"]
 
   # ---------------------------------------------------------------------------
+  # Specific packages to migrate (space-separated list passed to --packages).
+  # Set to [] to replicate all packages in the repository.
+  # Used here to target Gradle plugin marker artifacts that were skipped during
+  # the full repo migration.
+  # ---------------------------------------------------------------------------
+  artifactory_packages = [
+    "co/bird/gradle/clientmodule/co.bird.gradle.clientmodule.gradle.plugin",
+    "co/bird/gradle/dependency/co.bird.gradle.dependency.gradle.plugin",
+    "co/bird/gradle/deployable/co.bird.gradle.deployable.gradle.plugin",
+    "co/bird/gradle/factoring/co.bird.gradle.factoring.gradle.plugin",
+    "co/bird/gradle/flyway/co.bird.gradle.flyway.gradle.plugin",
+    "co/bird/gradle/metrics/co.bird.gradle.metrics.gradle.plugin",
+    "co/bird/gradle/version/co.bird.gradle.version.gradle.plugin",
+  ]
+
+  # ---------------------------------------------------------------------------
+  # Repo name mapping: Artifactory repo → CodeArtifact repo
+  # Format: "artifactory_repo:codeartifact_repo,..."
+  # Set to null to disable (repo names are used as-is).
+  # ---------------------------------------------------------------------------
+  acm_repo_mapping = "internal:maven-private,npm-local:npm-private,bird-pip:pypi-private"
+
+  # ---------------------------------------------------------------------------
   # ACM runtime flags – mirror the env vars consumed by run.sh
   #
   # Toggle acm_dryrun to switch between dryrun and production:
   #   true  → no real publishing, no cache/DynamoDB
   #   false → real publishing, cache enabled, DynamoDB used as cache backend
   # ---------------------------------------------------------------------------
-  acm_dryrun = true # ← set to false for production run
+  acm_dryrun = false # ← set to false for production run
 
   acm_verbose = true  # enable INFO-level logs (shows package/version progress)
   acm_debug   = false # set to true for full debug output (very verbose)
@@ -90,6 +114,7 @@ locals {
     "--codeartifactaccount ${local.codeartifact_account}",
     "--codeartifactregion ${local.codeartifact_region}",
     length(local.artifactory_repositories) > 0 ? "--repositories ${join(" ", local.artifactory_repositories)}" : "",
+    length(local.artifactory_packages) > 0 ? "--packages '${join(" ", local.artifactory_packages)}'" : "",
     local.acm_dryrun ? "--dryrun" : "",
     local.acm_verbose ? "-v" : "",
     local.acm_debug ? "--debug" : "",
@@ -103,6 +128,8 @@ locals {
 
   # Full shell command passed to /bin/sh -c
   acm_shell_command = "artifactory-codeartifact-migrator ${local._acm_args_static}"
+
+
 
   # ---------------------------------------------------------------------------
   # Resource tags
