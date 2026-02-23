@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import boto3
 import hashlib
 from . import monitor
@@ -7,8 +8,19 @@ from . import boto_setup
 
 logger = monitor.getLogger()
 
-dynamodb = boto3.client(
-    'dynamodb', region_name = 'us-east-1')
+def _get_dynamodb_client():
+    """
+    Returns a DynamoDB client.
+    Region is read from AWS_DEFAULT_REGION / AWS_REGION env vars (set by the K8s
+    Job spec) so we don't hardcode us-east-1.  Falls back to us-west-2 if unset.
+    """
+    region = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION") or "us-west-2"
+    return boto3.client("dynamodb", region_name=region)
+
+# Module-level client – created once on first import.
+# boto_setup.py has already configured the default session (profile or IRSA)
+# before this line runs, so credentials are resolved correctly.
+dynamodb = _get_dynamodb_client()
 
 def getSha(string):
   return hashlib.sha384(string.encode()).hexdigest()

@@ -46,6 +46,11 @@ def getArgs():
     action = 'store_true'
   )
   parser.add_argument(
+    '--force',
+    help = 'Force re-upload of package versions even if already Published in CodeArtifact. Useful to pick up missing asset files (e.g. .module files) for previously migrated packages.',
+    action = 'store_true'
+  )
+  parser.add_argument(
     '-p',
     '--procs',
     help = 'Number of processes to parallelize repository replication',    
