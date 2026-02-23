@@ -150,7 +150,11 @@ def artifactory_package_binary_search(args, package_dict):
                             if '.pom' in i['uri'] or \
                                 '.jar' in i['uri'] or \
                                 '.tar.gz' in i['uri'] or \
-                                '.module' in i['uri']:
+                                '.module' in i['uri'] or \
+                                i['uri'].endswith('.sha1') or \
+                                i['uri'].endswith('.sha256') or \
+                                i['uri'].endswith('.sha512') or \
+                                i['uri'].endswith('.md5'):
                                 binaries.append(i['uri'])
                 else:
                     logger.critical(f"ERROR: Package type {package_dict['type']} not supported: {package_dict}")
