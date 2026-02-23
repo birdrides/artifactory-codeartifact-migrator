@@ -12,9 +12,9 @@ def _get_dynamodb_client():
     """
     Returns a DynamoDB client.
     Region is read from AWS_DEFAULT_REGION / AWS_REGION env vars (set by the K8s
-    Job spec) so we don't hardcode us-east-1.  Falls back to us-west-1 if unset.
+    Job spec) so we don't hardcode us-east-1.  Falls back to us-west-2 if unset.
     """
-    region = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION") or "us-west-1"
+    region = os.environ.get("AWS_DEFAULT_REGION") or os.environ.get("AWS_REGION") or "us-west-2"
     return boto3.client("dynamodb", region_name=region)
 
 # Module-level client – created once on first import.
