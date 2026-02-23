@@ -10,7 +10,7 @@ locals {
   # Naming
   # ---------------------------------------------------------------------------
   name_prefix       = "acm-migration"
-  image_tag = "0.0.11"
+  image_tag = "0.0.15"
   default_image_uri = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.region}.amazonaws.com/acm-migration:${local.image_tag}"
 
   log_retention_days = 14
@@ -55,13 +55,16 @@ locals {
   # versions; older history lives only in Artifactory).
   # ---------------------------------------------------------------------------
   # artifactory_packages = [
-  #   "co/bird/gradle/clientmodule/co.bird.gradle.clientmodule.gradle.plugin",
-  #   "co/bird/gradle/dependency/co.bird.gradle.dependency.gradle.plugin",
-  #   "co/bird/gradle/deployable/co.bird.gradle.deployable.gradle.plugin",
-  #   "co/bird/gradle/factoring/co.bird.gradle.factoring.gradle.plugin",
-  #   "co/bird/gradle/flyway/co.bird.gradle.flyway.gradle.plugin",
-  #   "co/bird/gradle/metrics/co.bird.gradle.metrics.gradle.plugin",
-  #   "co/bird/gradle/version/co.bird.gradle.version.gradle.plugin",
+  #   "co/bird/alert/module-client",
+  #   "co/bird/alert/module-enums",
+  #   "co/bird/analytics/module-client",
+  #   "co/bird/android/localization/resources",
+  #   "co/bird/android/reactive-location/reactive-location",
+  #   "co/bird/assembly/module-client",
+  #   "co/bird/assembly/module-client-enum",
+  #   "co/bird/assembly/module-event",
+  #   "co/bird/assembly/module-powerline",
+  #   "co/bird/assembly/simcards/module-simcards",
   # ]
 
   # ---------------------------------------------------------------------------
@@ -84,6 +87,7 @@ locals {
   acm_debug   = false # set to true for full debug output (very verbose)
   acm_clean   = false
   acm_refresh = false
+  acm_force   = false  # set to true to wipe+re-upload already-Published versions (e.g. to pick up missing .module files)
   acm_output  = null # set to a file path string to redirect logs to a file
   acm_procs   = null # set to an integer string to override default parallelism
 
@@ -122,6 +126,7 @@ locals {
     local.acm_cache ? "--cache" : "",
     local.acm_clean ? "--clean" : "",
     local.acm_refresh ? "--refresh" : "",
+    local.acm_force ? "--force" : "",
     local.acm_dynamodb ? "--dynamodb" : "",
     local.acm_output != null ? "--output ${local.acm_output}" : "",
     local.acm_procs != null ? "--procs ${local.acm_procs}" : "",
