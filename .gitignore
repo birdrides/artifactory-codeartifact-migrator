@@ -1,3 +1,8 @@
 dist/**
 build/**
 artifactory_codeartifact_migrator.egg-info/**
+env.sh
+.replication
+**.log
+**/.terraform/**
+*.pem
